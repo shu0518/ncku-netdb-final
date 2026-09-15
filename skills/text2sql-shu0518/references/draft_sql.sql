@@ -1,0 +1,1 @@
+SELECT T1.title, AVG(T2.score) FROM Courses AS T1 JOIN Enrollments AS T2 ON T1.cid = T2.cid GROUP BY T1.cid ORDER BY AVG(T2.score) DESC

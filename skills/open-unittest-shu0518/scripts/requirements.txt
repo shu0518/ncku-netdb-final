@@ -1,0 +1,4 @@
+# open-unittest-shu0518 — no third-party dependencies.
+# The harness (scripts/muteval.py, run.py, score.py) uses only the Python
+# standard library (requires Python >= 3.9 for ast.unparse).
+# No packages to pin.

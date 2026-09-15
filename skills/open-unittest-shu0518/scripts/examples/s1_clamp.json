@@ -1,0 +1,8 @@
+{
+  "task_id": "open_ut_clamp",
+  "track": "open",
+  "entry_function": "clamp",
+  "description": "Clamp x into the inclusive range [lo, hi]. If lo > hi the bounds are treated as swapped.",
+  "code": "def clamp(x, lo, hi):\n    if lo > hi:\n        lo, hi = hi, lo\n    if x < lo:\n        return lo\n    if x > hi:\n        return hi\n    return x\n",
+  "reference_tests": "def test_inside():\n    assert clamp(5, 0, 10) == 5\n\ndef test_below():\n    assert clamp(-3, 0, 10) == 0\n\ndef test_above():\n    assert clamp(99, 0, 10) == 10\n\ndef test_on_low_bound():\n    assert clamp(0, 0, 10) == 0\n\ndef test_on_high_bound():\n    assert clamp(10, 0, 10) == 10\n\ndef test_swapped_bounds():\n    assert clamp(5, 10, 0) == 5\n    assert clamp(-1, 10, 0) == 0\n"
+}

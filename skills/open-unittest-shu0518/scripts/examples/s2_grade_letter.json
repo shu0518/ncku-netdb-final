@@ -1,0 +1,8 @@
+{
+  "task_id": "open_ut_grade_letter",
+  "track": "open",
+  "entry_function": "grade_letter",
+  "description": "Map a 0-100 score to a letter grade: >=90 A, >=80 B, >=70 C, >=60 D, else F.",
+  "code": "def grade_letter(score):\n    if score >= 90:\n        return 'A'\n    if score >= 80:\n        return 'B'\n    if score >= 70:\n        return 'C'\n    if score >= 60:\n        return 'D'\n    return 'F'\n",
+  "reference_tests": "def test_a():\n    assert grade_letter(95) == 'A'\n\ndef test_a_boundary():\n    assert grade_letter(90) == 'A'\n\ndef test_b():\n    assert grade_letter(85) == 'B'\n    assert grade_letter(80) == 'B'\n\ndef test_c():\n    assert grade_letter(70) == 'C'\n\ndef test_d():\n    assert grade_letter(60) == 'D'\n\ndef test_f():\n    assert grade_letter(59) == 'F'\n    assert grade_letter(0) == 'F'\n\ndef test_just_below_a():\n    assert grade_letter(89) == 'B'\n"
+}
