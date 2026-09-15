@@ -67,3 +67,6 @@ python3 -m pytest -q
     dev_set/basic/                  20 Text2SQL dev tasks with answers + build_dbs.py
     dev_set/pairwise/reference_tasks/   5 reference task pairs with ground-truth bug annotations
     aiase_contract.py, run_dev.py   Shared file-based output contract + local test driver
+
+---
+Original course-assignment README (in Chinese, incl. submission checklist and grading-harness spec): [docs/course-requirements.md](docs/course-requirements.md)
