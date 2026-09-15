@@ -1,140 +1,69 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/0_h2Gwpe)
-# AIASE 2026 期末專案 - shu0518
+# Verifiable Skills for the Hermes Agent
 
-> 在 Hermes Agent 上打造可驗證的 Skill。此 repo 已完成 Basic / Pairwise / Open 三個 track，並採用 file-based output contract。
+> Three Hermes agent skills (Basic Text2SQL, Pairwise Code-Author/Bug-Hunter, Open Track unit-test generator) built around one shared contract: a skill's last action is always a script that writes the result to a file, so grading never depends on parsing the model's conversational output.
 
----
+`Course project` · Netdb Lab, NCKU · AIASE 2026 · Individual
+**Stack:** Python · Hermes agent framework · pytest · AST-based mutation testing (stdlib only)
 
-## 本地測試
+## Overview
 
-先安裝 Python dependency:
+Each of the three tracks pairs a `SKILL.md` procedure (what the model should do) with a `scripts/` harness (what actually gets checked). Basic Track (`text2sql-shu0518`) makes the model enumerate the schema before emitting one read-only SQL statement. Pairwise Track submits both roles: `code-author-shu0518` writes candidate code and routes it through `scripts/selftest.py` before scoring, and `bug-hunter-shu0518` only reports a bug when its analyzer finds crash or mismatch evidence, defaulting to `clean` otherwise. Open Track (`open-unittest-shu0518`) generates unit tests for a given Python function and scores them by mutation testing rather than coverage. In every track, the skill's final step calls `scripts/run.py`, which writes the result to `$AIASE_RESULT_PATH`; the grader reads that file, not the chat transcript.
+
+## Key Design Decisions
+
+| Decision | Rationale |
+| --- | --- |
+| File-based output contract (`scripts/run.py` -> `$AIASE_RESULT_PATH`) instead of trailing fenced JSON in chat | Early Text2SQL relied on a fenced JSON block at the end of the conversation; the model sometimes ran the script correctly but then appended its own SQL or prose, so the grader found no valid trailing JSON (see Challenges) |
+| `text2sql-shu0518` forbids CTEs, window functions, multi-statement SQL, and DDL/DML | Keeps the output space small enough to verify deterministically, and matches the read-only, single-statement assumption the grader checks against |
+| `bug-hunter-shu0518` is evidence-gated: a bug is only reported when the analyzer finds crash or mismatch evidence | Defaults to `clean` instead of a guessed bug report, which lowers false positives compared to letting the model report on intuition |
+| `open-unittest-shu0518` is scored by mutation score, not coverage | Measured directly: an assert-free test suite that only calls the function under test reached 85.71% line coverage but killed zero mutants (`mutation_score = 0`) — coverage alone doesn't prove the tests catch bugs |
+| `code-author-shu0518` routes candidate code through `scripts/selftest.py` (checks S-LOC, forbidden imports, sandbox risk) before `run.py` | Avoids the model hand-typing `loc` or test counts into the result schema, which is a source of schema errors if done manually |
+
+## Challenges
+
+**Problem.** The original Text2SQL skill asked the model to end its turn with a fenced JSON block. In practice, the model sometimes called the script and got a correct answer, then appended its own SQL or an English explanation afterward — the grader's log showed `no valid fenced JSON in stdout`, or found a ` ```sql ` block where it expected ` ```json `. The SQL itself wasn't wrong; the output contract was.
+**Approach.** Rewrote all three tracks so the skill's last action is always `scripts/run.py`, which writes the result to `$AIASE_RESULT_PATH` and is the only thing the grader reads — the conversational transcript is no longer scored.
+**Result.** This removed the "unstable conversational contract" failure mode across Basic, Pairwise, and Open Track at once, since all three now share the same file-based contract (`aiase_contract.py`).
+
+## Limitations
+
+- Local development testing under-measures quality: a 12B model on 12GB VRAM offloads to CPU, and simple single-table Text2SQL queries were observed taking ~66s locally with some dev-set items hitting a 120s timeout that the actual grading gateway would not hit.
+- `bug-hunter-shu0518`'s oracle still depends on the model deriving expected behavior from the task description; there's no structured parser yet to auto-generate empty/boundary/out-of-range cases (noted as a TODO in `report.md`).
+- Mutation operators in `open-unittest-shu0518` cover arithmetic, comparison, boolean, and constant flips only — list slicing, loop-boundary, and dict-key mutations aren't implemented yet.
+- The Open Track pass threshold (`mutation_score >= 0.70`) is a single fixed value applied to every function regardless of its branching complexity.
+
+## Running It
 
 ```bash
 python -m pip install -r requirements.txt
-```
+hermes skills list                                    # confirm skills are visible
 
-確認 Hermes 看得到 skill:
-
-```bash
-hermes skills list
-```
-
-煙霧測試:
-
-```bash
+# Smoke test
 AIASE_RESULT_PATH=/tmp/hello_probe.json \
 hermes chat --toolsets skills,terminal --yolo -Q \
   -q '/hello-aiase {"task_id":"probe","name":"shu"}'
-cat /tmp/hello_probe.json
-```
 
-Basic Track:
-
-```bash
+# Basic Track
 python dev_set/basic/build_dbs.py
 python3 run_dev.py --skill text2sql-shu0518 --track basic --dev-dir dev_set/basic
-```
 
-Pairwise Track:
-
-```bash
+# Pairwise Track
 python3 grade_bughunter_local.py --skill bug-hunter-shu0518
-```
 
-Open Track:
-
-```bash
+# Open Track
 bash verify_open.sh
-```
 
-Repo gate:
-
-```bash
+# Repo gate (structure / schema / no hardcoded tokens or paths)
 python3 verify_repo.py --github-id shu0518
 python3 -m pytest -q
 ```
 
----
+## Structure
 
-## 倉庫結構
-
-```
-.
-├── README.md                              ← 你正在看
-├── requirements.txt                       ← 本地 dev 用,radon/pytest/PyYAML
-├── run_dev.py                             ← 本地自測:驅動 hermes chat -q + 比對
-├── verify_repo.py                         ← 繳交前自我檢查
-├── PAIRWISE_ROLE.md                       ← 必交,宣告 Pairwise 角色
-├── OPEN_TRACK.md                          ← 必交,Open Track 七區塊宣告
-├── report.md                              ← 必交,設計決策 + 失敗分析
-├── docs/                                  ← gateway / env 範例
-│   ├── hermes-config.example.yaml
-│   └── hermes-env.example
-├── skills/                                ← 你的 skill 與 reference 對手
-│   ├── hello-aiase/                       ← 煙霧測試,勿改
-│   ├── text2sql-shu0518/                 ← Basic Track 骨架,改名後填邏輯
-│   ├── code-author-shu0518/              ← Pairwise Code Author 骨架
-│   ├── bug-hunter-shu0518/               ← Pairwise Bug Hunter 骨架
-│   ├── open-unittest-shu0518/             ← Open Track skill
-│   ├── reference-bug-hunter-conservative/ ← 課程提供,本機自測 Pairwise 對手
-│   ├── reference-bug-hunter-aggressive/
-│   ├── reference-bug-hunter-noisy/
-│   ├── reference-author-clean/
-│   ├── reference-author-buggy/
-│   └── reference-author-tricky/
-├── dev_set/
-│   ├── basic/                             ← Basic Track 公開 dev set(含答案)
-│   │   ├── task_nl2sql_*.json
-│   │   ├── dbs/                           ← 對應 sqlite(用 build_dbs.py 生)
-│   │   └── build_dbs.py
-│   └── pairwise/
-│       ├── task_pairwise_EXAMPLE.json
-│       └── reference_tasks/               ← 含 ground-truth bug 標註
-└── tests/                                 ← 確定性元件的 pytest
-```
-
----
-
-## 必交檔案清單
-
-繳交 deadline(2026/6/16 23:59 Asia/Taipei)前,確認 default branch 上有:
-
-- [ ] `skills/text2sql-shu0518/SKILL.md` + scripts(Basic Track)
-- [ ] `skills/code-author-shu0518/` 與 `skills/bug-hunter-shu0518/`(Pairwise 兩角色皆提交)
-- [ ] `skills/open-unittest-shu0518/`(Open Track)
-- [ ] `PAIRWISE_ROLE.md`(同時宣告 Code Author 與 Bug Hunter)
-- [ ] `OPEN_TRACK.md`(七區塊齊全)
-- [ ] `report.md`
-
----
-
-## 繳交前自我檢查
-
-```bash
-python3 verify_repo.py --github-id shu0518
-```
-
-會檢查 folder name 一致性、`SKILL.md` 必填欄位、`OPEN_TRACK.md` 七區塊、無疑似 token、無絕對路徑。輸出 `verify_report.json`。
-
-詳細檢查清單見規格書 §5.7。
-
----
-
-## 重要規則(摘要,以規格書為準)
-
-1. **不用 MCP**:本地確定性 helper 一律放 `scripts/`,不可以額外起 MCP server。
-2. **輸出契約**:每個 skill 的最後一個動作 = 執行 `scripts/run.py` 將結果寫入 `AIASE_RESULT_PATH`；評分器讀結果檔，不靠對話中的 fenced JSON。
-3. **無外網**:評分環境無外網;只允許課程的 LiteLLM Gateway。
-4. **無絕對路徑**:禁止寫死個人電腦、家目錄、下載資料夾等 machine-specific path；請用相對路徑、`__file__` 推導或 `AIASE_RESULT_PATH`。
-5. **dependency pin 版本**:`scripts/requirements.txt` 必須 pin 版本。
-6. **task_id**:輸入有 `task_id`,輸出的 `task_id` 必須完全相同。
-7. **model-agnostic**:評分模型為 held-out,別寫死在某顆模型的脾氣上。
-
----
-
-## 開發策略(建議)
-
-1. **先用 `gemma4` 反覆迭代**(免費,不耗你的 2 美元上限)。
-2. 基礎穩了再切 `gemini-2.5-flash` 驗一輪跨模型不退步(計入 2 美元)。
-3. `claude-haiku-4-5` 是 held-out,**開發期取不到**(別賭它的脾氣)。
-4. 多用 `run_dev.py` —— dev set 含答案,是你唯一可靠的自我檢驗工具。
+    skills/text2sql-shu0518/        Basic Track: schema-grounded, single-statement, read-only SQL
+    skills/code-author-shu0518/     Pairwise: candidate code -> scripts/selftest.py -> run.py
+    skills/bug-hunter-shu0518/      Pairwise: evidence-gated bug reports (crash/mismatch required)
+    skills/open-unittest-shu0518/   Open Track: unit-test generator, scored by mutation testing
+    dev_set/basic/                  20 Text2SQL dev tasks with answers + build_dbs.py
+    dev_set/pairwise/reference_tasks/   5 reference task pairs with ground-truth bug annotations
+    aiase_contract.py, run_dev.py   Shared file-based output contract + local test driver
